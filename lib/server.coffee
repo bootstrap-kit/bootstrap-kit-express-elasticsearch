@@ -8,13 +8,15 @@ unzip = require 'adm-zip'
 http = require 'http'
 
 module.exports = (opts) ->
-  {port, dataDir, logsDir, installDir} = opts
+  {port, dataDir, logsDir, installDir, version} = opts
 
   port       ?= 9211
   dataDir    ?= path.resolve(__dirname, '../var/data')
-  logsDir     ?= path.resolve(__dirname, '../var/logs')
-  installDir ?= path.resolve(__dirname, '../vendor/elasticsearch')
-  es_command  = path.resolve __dirname, installDir, 'bin/elasticsearch'
+  logsDir    ?= path.resolve(__dirname, '../var/logs')
+  installDir ?= path.resolve(__dirname, '../vendor')
+  version    ?= '2.3.3'
+
+  es_command  = path.resolve __dirname, installDir, "elasticsearch-#{version}", 'bin/elasticsearch'
 
   startElasticSearchServer = ->
     elasticsearch = child_process.spawn es_command, [
@@ -26,38 +28,52 @@ module.exports = (opts) ->
     process.on 'exit', ->
       elasticsearch.kill()
 
-  if not fs.existsSync es_command
-    url = 'http://download.elastic.co/elasticsearch/release/org/elasticsearch' +
-      '/distribution/zip/elasticsearch/2.3.3/elasticsearch-2.3.3.zip'
+  elasticSearchReady = new Promise (resolve, reject) ->
+    if not fs.existsSync es_command
 
-    mkdirs = (dir) ->
-      if not fs.existsSync dir
-        mkdirs path.dirname dir
-        fs.mkdirSync dir
+      url = 'http://download.elastic.co/elasticsearch/release/org/elasticsearch' +
+        "/distribution/zip/elasticsearch/#{version}/elasticsearch-#{version}.zip"
 
-    mkdirs installDir
-    zipFileName = tempfile('.zip')
+      mkdirs = (dir) ->
+        if not fs.existsSync dir
+          mkdirs path.dirname dir
+          fs.mkdirSync dir
 
-    console.log "#{es_command} does not exist, fetching from #{url} to #{zipFileName}"
-    zipfile = fs.openSync zipFileName, 'w'
+      mkdirs installDir
 
-    req = http.request url, (res) ->
-      console.log "res status code: #{res.statusCode}"
-      res.on 'data', (chunk) ->
-        fs.writeSync zipfile, chunk
-      res.on 'end', ->
-        fs.closeSync zipfile
+      zipFileName = tempfile('.zip')
 
-        unzipper = new AdmZip zipFileName
-        unzipper.extractAllTo installDir
+      console.log "download #{url} to #{zipFileName}"
 
-        startElasticSearchServer()
+      zipFileStream = fs.createWriteStream zipFileName
 
-    req.on 'error', (err) ->
-      console.log "error getting elasticsearch from #{url}", err
-      console.log "You can do this manually:"
-      console.log "1. fetch it from #{url}"
-      console.log "2. extract to #{installDir}"
+      req = http.request url, (res) ->
+        console.log "  connected (#{res.statusCode})"
 
-  else
+        res.pipe(zipFileStream)
+        res.on 'end', ->
+          zipFileStream.end()
+
+        zipFileStream.on 'finish', ->
+          zipFileStream.close ->
+            console.log "unzip #{zipFileName}"
+            unzipper = new unzip zipFileName
+            unzipper.extractAllTo installDir
+            console.log "remove #{zipFileName}"
+            fs.unlinkSync zipFileName
+
+            resolve()
+        zipFileStream.on 'error', (err) ->
+          reject(err)
+
+      req.on 'error', (err) ->
+        console.log "error getting elasticsearch from #{url}", err
+        console.log "You can do this manually:"
+        console.log "1. fetch it from #{url}"
+        console.log "2. extract to #{installDir}"
+        reject(err)
+
+      req.end()
+
+  elasticSearchReady.then ->
     startElasticSearchServer()
