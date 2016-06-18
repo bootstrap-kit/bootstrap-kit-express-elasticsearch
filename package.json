@@ -1,0 +1,17 @@
+{
+  "name": "bootstrap-kit-express-elasticsearch",
+  "version": "0.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Kay-Uwe <kiwi@franka.dyndns.org> (Kiwi)",
+  "license": "MIT",
+  "dependencies": {
+    "adm-zip": "^0.4.7",
+    "coffee-script": "^1.10.0",
+    "elasticsearch": "^11.0.1",
+    "tempfile": "^1.1.1"
+  }
+}
