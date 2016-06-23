@@ -1,6 +1,6 @@
 
 module.exports =
-  backend: ({app}) ->
+  backend: ({app, express}) ->
     opts = app.get('elasticsearch-opts') or {}
 
     unless opts.host
